@@ -14,6 +14,10 @@ public class SynchronousSocketClient
     public static IPEndPoint remoteEP = new IPEndPoint(ipAddress, 11000);
     public static Socket sender = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
+    public static Socket senderUdp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+    public static IPAddress broadcast = IPAddress.Parse("127.0.0.1"); // needs a separate ipAddress instance
+    public static IPEndPoint ep = new IPEndPoint(broadcast, 11000);
+
     public static void StartClient()
     {
         byte[] bytes = new byte[1024];
@@ -32,15 +36,14 @@ public class SynchronousSocketClient
             Thread sendThread = new Thread(SendThread);
             sendThread.Start();
 
+            Thread UDPsenderThread = new Thread(UDPSenderThread);
+            UDPsenderThread.Start();
+
             while (true) // and continue listening to the server
             {
                 bytesRec = sender.Receive(bytes);
                 Console.WriteLine(Encoding.ASCII.GetString(bytes, 0, bytesRec));
             }
-
-            //sender.Shutdown(SocketShutdown.Both);
-            //sender.Close();
-
         }
         catch (ArgumentNullException ane)
         {
@@ -61,15 +64,36 @@ public class SynchronousSocketClient
     {
         while (true)
         {
-            sender.Send(Encoding.ASCII.GetBytes(Console.ReadLine() + "<EOF>"));
+            string str = Console.ReadLine();
+            sender.Send(Encoding.ASCII.GetBytes(str + "<EOF>"));
         }
     }
+
+    public static void DiconnectTCP()
+    {
+        sender.Shutdown(SocketShutdown.Both);
+        sender.Close();
+    }
+
+
+    public static void UDPSenderThread()
+    {
+        byte[] sendbuf = Encoding.ASCII.GetBytes("UDP TEST");
+        while (true)
+        {
+            senderUdp.SendTo(sendbuf, ep);
+            Thread.Sleep(1000);
+        }
+    }
+    
 
     public static int Main(String[] args)
     {
         Thread connectAndListenThread = new Thread(StartClient);
         connectAndListenThread.Start();
 
+        //Console.Read();
+        //Console.WriteLine("press any key to close...");
         return 0;
     }
 }

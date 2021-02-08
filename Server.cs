@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using System.Collections.Generic;
 
 public class ThreadedSocketListener
 {
@@ -12,9 +11,17 @@ public class ThreadedSocketListener
     public static IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
     public static Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
+    public static UdpClient listenerUDP = new UdpClient(11000);
+
     public static int clientMax = 10;
-    public static List<Socket> clients = new List<Socket>();
-    public static List<Thread> listeningThreads = new List<Thread>();
+    public static Thread[] listeningThreads = new Thread[clientMax];
+    public static CLIENT[] clientsArr = new CLIENT[clientMax];
+
+    public class CLIENT
+    {
+        public Socket socketTCP;
+        public bool active = false;
+    }
 
     public static void StartListening()
     {
@@ -37,20 +44,50 @@ public class ThreadedSocketListener
                     break;
                 }
             }
+            Console.WriteLine("Client connected : {0}", data);
 
-            Console.WriteLine("Text received : {0}", data);
-            byte[] msg = Encoding.ASCII.GetBytes("You're connected!");
-            handler.Send(msg);
+            int clientIndex = -1;
+            for (int i = 0; i < clientMax; i++)
+            {
+                if (!clientsArr[i].active)
+                {
+                    clientsArr[i].socketTCP = handler;
+                    clientsArr[i].active = true;
+                    clientIndex = i;
+                    break;
+                }
+            }
+            if (clientIndex == -1)
+            {
+                handler.Send(Encoding.ASCII.GetBytes("Sorry, the server is full right now."));
+                break;
+            }
+            else
+            {
+                handler.Send(Encoding.ASCII.GetBytes("You're connected!"));
+            }
 
-            clients.Add(handler);
-
-            
             while (true) // continue to listen for client input
             {
                 data = null;
                 while (true)
                 {
-                    int bytesRec = handler.Receive(bytes);
+                    int bytesRec = 0;
+                    try
+                    {
+                        bytesRec = handler.Receive(bytes);
+                    }
+                    catch // handling the client unexpectedly disconnecting
+                    {
+                        handler.Shutdown(SocketShutdown.Both);
+                        handler.Close();
+                        clientsArr[clientIndex].socketTCP = null;
+                        clientsArr[clientIndex].active = false;
+                        goto DISCONNECTED_CLIENT;
+                    }
+
+
+
                     data += Encoding.ASCII.GetString(bytes, 0, bytesRec);
                     if (data.IndexOf("<EOF>") > -1)
                     {
@@ -58,10 +95,12 @@ public class ThreadedSocketListener
                     }
                 }
 
-                for (int i = 0; i < clients.Count; i++)
+                for (int i = 0; i < clientMax; i++)
                 {
-
-                    clients[i].Send(Encoding.ASCII.GetBytes(data));
+                    if (i != clientIndex && clientsArr[i].active)
+                    {
+                        clientsArr[i].socketTCP.Send(Encoding.ASCII.GetBytes(data));
+                    }
 
                     /*
                     if (sendThreads[i] != null)
@@ -75,14 +114,27 @@ public class ThreadedSocketListener
                     */
                 }
             }
-            //handler.Shutdown(SocketShutdown.Both);
-            //handler.Close();
+
+        DISCONNECTED_CLIENT:;
+            
         }
     }
 
     public static void SendThread(int c, string message)
     {
-        clients[c].Send(Encoding.ASCII.GetBytes(message));
+        clientsArr[c].socketTCP.Send(Encoding.ASCII.GetBytes(message));
+    }
+
+    public static void ListenUDPThread()
+    {
+        byte[] bytes;
+        IPEndPoint groupEP = new IPEndPoint(IPAddress.Any, 11000);
+        while (true)
+        {
+            bytes = listenerUDP.Receive(ref groupEP);
+            Console.WriteLine($"Received broadcast from {groupEP} :");
+            Console.WriteLine($" {Encoding.ASCII.GetString(bytes, 0, bytes.Length)}");
+        }
     }
 
     public static int Main(String[] args)
@@ -97,12 +149,19 @@ public class ThreadedSocketListener
             Console.WriteLine(e.ToString());
         }
 
-        
+        for (int i = 0; i < clientMax; i++) // initializing client array
+        {
+            clientsArr[i] = new CLIENT();
+        }
+
         for (int i = 0; i < clientMax; i++)
         {
-            listeningThreads.Add(new Thread(StartListening));
+            listeningThreads[i] = new Thread(StartListening);
             listeningThreads[i].Start();
         }
+
+        Thread UDPtestThread = new Thread(ListenUDPThread);
+        UDPtestThread.Start();
 
         Console.Read();
         Console.WriteLine("press any key to close...");
