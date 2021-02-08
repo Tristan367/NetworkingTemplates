@@ -4,30 +4,45 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-public class ThreadedSocketListener
+public class ThreadedSocketServer
 {
     public static IPHostEntry ipHostInfo = Dns.GetHostEntry(Dns.GetHostName());
     public static IPAddress ipAddress = ipHostInfo.AddressList[0];
     public static IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
     public static Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
-    public static UdpClient listenerUDP = new UdpClient(11000);
+    public static UdpClient listenerUDP = new UdpClient(12000);
 
-    public static int clientMax = 10;
+    public static int clientMax = 9;
     public static Thread[] listeningThreads = new Thread[clientMax];
     public static CLIENT[] clientsArr = new CLIENT[clientMax];
 
     public class CLIENT
     {
         public Socket socketTCP;
-        public bool active = false;
+        public bool active;
+        public CLIENT()
+        {
+            socketTCP = null;
+            active = false;
+        }
+    }
+
+    public class ThreadSafeClientParameters
+    {
+        public string MSG {get; set;}
+        public int Index { get; set; }
+        public ThreadSafeClientParameters(string msg, int index)
+        {
+            MSG = msg;
+            Index = index;
+        }
     }
 
     public static void StartListening()
     {
         string data = null;
         byte[] bytes = new Byte[1024];
-        Thread[] sendThreads = new Thread[clientMax];
 
         while (true)
         {
@@ -57,6 +72,7 @@ public class ThreadedSocketListener
                     break;
                 }
             }
+
             if (clientIndex == -1)
             {
                 handler.Send(Encoding.ASCII.GetBytes("Sorry, the server is full right now."));
@@ -77,8 +93,9 @@ public class ThreadedSocketListener
                     {
                         bytesRec = handler.Receive(bytes);
                     }
-                    catch // handling the client unexpectedly disconnecting
+                    catch 
                     {
+                        Console.WriteLine("Client disconnected.");
                         handler.Shutdown(SocketShutdown.Both);
                         handler.Close();
                         clientsArr[clientIndex].socketTCP = null;
@@ -99,19 +116,10 @@ public class ThreadedSocketListener
                 {
                     if (i != clientIndex && clientsArr[i].active)
                     {
-                        clientsArr[i].socketTCP.Send(Encoding.ASCII.GetBytes(data));
+                        ThreadSafeClientParameters tscp = new ThreadSafeClientParameters(data, i);
+                        Thread t = new Thread(() => SendThread(tscp));
+                        t.Start();
                     }
-
-                    /*
-                    if (sendThreads[i] != null)
-                    {
-                        sendThreads[i].Join();
-                    }
-
-                    sendThreads[i] = new Thread(() => SendThread(i, data));
-                    sendThreads[i].Start();
-                    sendThreads[i].Join();
-                    */
                 }
             }
 
@@ -120,20 +128,26 @@ public class ThreadedSocketListener
         }
     }
 
-    public static void SendThread(int c, string message)
+    public static void SendThread(ThreadSafeClientParameters tscp)
     {
-        clientsArr[c].socketTCP.Send(Encoding.ASCII.GetBytes(message));
+        try
+        {
+            clientsArr[tscp.Index].socketTCP.Send(Encoding.ASCII.GetBytes(tscp.MSG));
+        }
+        catch
+        {
+            Console.WriteLine("failed to send client message, index: " + tscp.Index);
+        }
     }
 
     public static void ListenUDPThread()
     {
         byte[] bytes;
-        IPEndPoint groupEP = new IPEndPoint(IPAddress.Any, 11000);
+        IPEndPoint groupEP = new IPEndPoint(IPAddress.Any, 12000);
         while (true)
         {
             bytes = listenerUDP.Receive(ref groupEP);
-            Console.WriteLine($"Received broadcast from {groupEP} :");
-            Console.WriteLine($" {Encoding.ASCII.GetString(bytes, 0, bytes.Length)}");
+            Console.WriteLine("Recieved UDP: " + Encoding.ASCII.GetString(bytes, 0, bytes.Length));
         }
     }
 
@@ -160,8 +174,8 @@ public class ThreadedSocketListener
             listeningThreads[i].Start();
         }
 
-        Thread UDPtestThread = new Thread(ListenUDPThread);
-        UDPtestThread.Start();
+        Thread UDPThread = new Thread(ListenUDPThread);
+        UDPThread.Start();
 
         Console.Read();
         Console.WriteLine("press any key to close...");

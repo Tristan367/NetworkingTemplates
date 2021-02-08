@@ -4,11 +4,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-public class SynchronousSocketClient
+public class ThreadedSocketClient
 {
-
-    public static string dataFromServer;
-
     public static IPHostEntry ipHostInfo = Dns.GetHostEntry("127.0.0.1");
     public static IPAddress ipAddress = ipHostInfo.AddressList[0];
     public static IPEndPoint remoteEP = new IPEndPoint(ipAddress, 11000);
@@ -16,7 +13,7 @@ public class SynchronousSocketClient
 
     public static Socket senderUdp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
     public static IPAddress broadcast = IPAddress.Parse("127.0.0.1"); // needs a separate ipAddress instance
-    public static IPEndPoint ep = new IPEndPoint(broadcast, 11000);
+    public static IPEndPoint epUDP = new IPEndPoint(broadcast, 12000);
 
     public static void StartClient()
     {
@@ -81,7 +78,7 @@ public class SynchronousSocketClient
         byte[] sendbuf = Encoding.ASCII.GetBytes("UDP TEST");
         while (true)
         {
-            senderUdp.SendTo(sendbuf, ep);
+            senderUdp.SendTo(sendbuf, epUDP);
             Thread.Sleep(1000);
         }
     }
