@@ -6,16 +6,41 @@ using System.Threading;
 
 public class ThreadedSocketServer
 {
-    public static IPHostEntry ipHostInfo = Dns.GetHostEntry(Dns.GetHostName());
-    public static IPAddress ipAddress = ipHostInfo.AddressList[0];
-    public static IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
-    public static Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+    public static IPHostEntry ipHostInfo;
+    public static IPAddress ipAddress;
+    public static IPEndPoint localEndPoint;
+    public static Socket listener;
 
-    public static UdpClient listenerUDP = new UdpClient(12000);
+    public static UdpClient listenerUDP;
 
-    public static int clientMax = 9;
-    public static Thread[] listeningThreads = new Thread[clientMax];
-    public static CLIENT[] clientsArr = new CLIENT[clientMax];
+    public static int clientMax;
+    public static Thread[] listeningThreads;
+    public static CLIENT[] clientsArr;
+
+    public static void InitializeNetwork(int maxClients)
+    {
+        try
+        {
+            ipHostInfo = Dns.GetHostEntry("127.0.0.1");
+            ipAddress = ipHostInfo.AddressList[0];
+            localEndPoint = new IPEndPoint(ipAddress, 11000);
+            listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            listener.Bind(localEndPoint);
+            listener.Listen(10);
+
+            listenerUDP = new UdpClient(12000);
+
+            clientMax = maxClients;
+            listeningThreads = new Thread[clientMax];
+            clientsArr = new CLIENT[clientMax];
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.ToString());
+            Console.Read();
+        }
+
+    }
 
     public class CLIENT
     {
@@ -103,8 +128,6 @@ public class ThreadedSocketServer
                         goto DISCONNECTED_CLIENT;
                     }
 
-
-
                     data += Encoding.ASCII.GetString(bytes, 0, bytesRec);
                     if (data.IndexOf("<EOF>") > -1)
                     {
@@ -134,9 +157,9 @@ public class ThreadedSocketServer
         {
             clientsArr[tscp.Index].socketTCP.Send(Encoding.ASCII.GetBytes(tscp.MSG));
         }
-        catch
+        catch (Exception e)
         {
-            Console.WriteLine("failed to send client message, index: " + tscp.Index);
+            Console.WriteLine(e.ToString());
         }
     }
 
@@ -153,15 +176,7 @@ public class ThreadedSocketServer
 
     public static int Main(String[] args)
     {
-        try
-        {
-            listener.Bind(localEndPoint);
-            listener.Listen(10);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.ToString());
-        }
+        InitializeNetwork(10); // initializing the network
 
         for (int i = 0; i < clientMax; i++) // initializing client array
         {
@@ -170,11 +185,11 @@ public class ThreadedSocketServer
 
         for (int i = 0; i < clientMax; i++)
         {
-            listeningThreads[i] = new Thread(StartListening);
+            listeningThreads[i] = new Thread(StartListening); // a tcp thread for each client
             listeningThreads[i].Start();
         }
 
-        Thread UDPThread = new Thread(ListenUDPThread);
+        Thread UDPThread = new Thread(ListenUDPThread); // a single UDP thread for everyone
         UDPThread.Start();
 
         Console.Read();
