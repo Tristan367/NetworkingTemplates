@@ -189,10 +189,12 @@ public class AsynchronousSocketListener
         // do what you'd like with `message` here:
         Console.WriteLine("Got " + message.Length + " bytes from " + source + ": " + Encoding.ASCII.GetString(message));
 
-        SendUDP(source.Address, 13000);
 
         // schedule the next receive operation once reading is done:
         socket.BeginReceive(new AsyncCallback(OnUdpData), socket);
+
+        SendUDP(source.Address, 13000);
+
     }
 
     private static void StartListenerAsyncUDP()
