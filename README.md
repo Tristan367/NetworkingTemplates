@@ -1,1 +1,1 @@
-Learning how to network with C# sockets.
+C# async tcp and udp server and client
